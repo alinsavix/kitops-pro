@@ -4,6 +4,7 @@ import bpy
 
 from . import addon, id, ray, remove, regex, update, modifier
 
+
 thumbnails = {}
 operator = None
 
@@ -79,12 +80,52 @@ def add(op, context):
 
     basename = os.path.basename(op.location)
     material_ids = [mat.kitops.id for mat in bpy.data.materials if mat.kitops.id]
-    kitops_materials = [regex.clean_name(strip_num(mat.name), use_re=preference.clean_names) for mat in bpy.data.materials if mat.kitops.material]
+    kitops_materials = [regex.clean_name(strip_num(mat.name), use_re=preference.clean_datablock_names) for mat in bpy.data.materials if mat.kitops.material]
 
+
+    dupe_mat_index_to_original = {}
     with bpy.data.libraries.load(op.location) as (blend, imported):
         imported.objects = blend.objects
-        # imported.scenes = blend.scenes
         imported.materials = blend.materials
+        if op.material_link:
+            i = 0
+            for mat in blend.materials:
+                if mat in bpy.data.materials:
+                    dupe_mat_index_to_original[i] = mat
+                i+=1
+
+    # if we have detected duplicates, assign them to a proper mapping of duplicate -> original material.
+    dupe_mat_to_original_mat = {}
+    for key_index in dupe_mat_index_to_original:
+        original_mat_name = dupe_mat_index_to_original[key_index]
+        duplicate_mat_name = imported.materials[key_index].name
+        dupe_mat_to_original_mat[duplicate_mat_name] = bpy.data.materials[original_mat_name]
+
+    # Attempt to handle any duplicate materials here ahead of handing them by id.
+    if op.material_link:
+        for obj in imported.objects:
+            try:
+                if obj is None or not hasattr(obj, 'data') or not hasattr(obj.data, 'materials'):
+                    continue
+                mats_to_remove = []
+                # Handle any duplicate materials by merging them with the scene.
+                for obj_mat in obj.data.materials:
+                    if obj_mat is None:
+                        continue
+
+                    if obj_mat.name in dupe_mat_to_original_mat:
+                        # This object contains a duplicate material.
+                        orig_scene_material = dupe_mat_to_original_mat[obj_mat.name]
+                        for slot in obj.material_slots:
+                                if slot.material == obj_mat:
+                                    slot.material = orig_scene_material
+                                    mats_to_remove.append(obj_mat)
+
+                for mat_to_remove in mats_to_remove:
+                    if mat_to_remove.users == 0:
+                        bpy.data.materials.remove(mat_to_remove)
+            except AttributeError:
+                pass
 
     op.inserts = []
 
@@ -97,11 +138,11 @@ def add(op, context):
     new_id = id.uuid()
 
     for obj in op.inserts:
-        obj.name = regex.clean_name(F'{basename[:-6].title()}_{obj.name.title()}', use_re=preference.clean_names)
+        obj.name = regex.clean_name(F'{basename[:-6].title()}_{obj.name.title()}', use_re=preference.clean_datablock_names)
         obj.kitops.inserted = True
         obj.kitops.id = new_id
         obj.kitops.label = regex.clean_name(basename, use_re=preference.clean_names)
-        obj.kitops.collection = regex.clean_name(os.path.basename(str(op.location)[:-len(os.path.basename(op.location)) - 1]), use_re=preference.clean_names)
+        obj.kitops.collection = regex.clean_name(os.path.basename(str(op.location)[:-len(os.path.basename(op.location)) - 1]), use_re=preference.clean_datablock_names)
 
         if preference.mode == 'REGULAR':
             obj.kitops.applied = True
@@ -115,15 +156,15 @@ def add(op, context):
                 slot.material.kitops.material = False
 
             # needs id check for standard assign
-            if slot.material and regex.clean_name(slot.material.name, use_re=preference.clean_names) in kitops_materials and not op.material:
+            if slot.material and regex.clean_name(slot.material.name, use_re=preference.clean_datablock_names) in kitops_materials and not op.material:
                 old_material = bpy.data.materials[slot.material.name]
-                slot.material = bpy.data.materials[regex.clean_name(slot.material.name, use_re=preference.clean_names)]
+                slot.material = bpy.data.materials[regex.clean_name(slot.material.name, use_re=preference.clean_datablock_names)]
 
                 if old_material.users == 0:
                     bpy.data.materials.remove(old_material, do_unlink=True, do_id_user=True, do_ui_user=True)
 
             elif slot.material and not op.material:
-                slot.material.name = regex.clean_name(slot.material.name, use_re=preference.clean_names)
+                slot.material.name = regex.clean_name(slot.material.name, use_re=preference.clean_datablock_names)
                 bpy.data.materials[slot.material.name].kitops.material = True
 
             elif slot.material and op.material_link:
@@ -138,9 +179,9 @@ def add(op, context):
                         op.import_material.kitops.material = True
                         break
 
-                elif regex.clean_name(strip_num(slot.material.name), use_re=preference.clean_names) in kitops_materials:
+                elif regex.clean_name(strip_num(slot.material.name), use_re=preference.clean_datablock_names) in kitops_materials:
                     if strip_num(slot.material.name) in bpy.data.materials:
-                        mats = [m for m in sorted(bpy.data.materials[:], key=lambda m: m.name) if m.kitops.material and regex.clean_name(strip_num(slot.material.name)) == regex.clean_name(strip_num(m.name)) and m != slot.material]
+                        mats = [m for m in sorted(bpy.data.materials[:], key=lambda m: m.name) if m.kitops.material and regex.clean_name(strip_num(slot.material.name), use_re=preference.clean_datablock_names) == regex.clean_name(strip_num(m.name), use_re=preference.clean_datablock_names) and m != slot.material]
 
                         if mats:
                             op.import_material = mats[0]
@@ -159,16 +200,16 @@ def add(op, context):
                     break
 
             elif slot.material and op.material:
-                slot.material.name = regex.clean_name(slot.material.name, use_re=preference.clean_names)
+                slot.material.name = regex.clean_name(slot.material.name, use_re=preference.clean_datablock_names)
                 op.import_material = slot.material
                 bpy.data.materials[slot.material.name].kitops.material = True
                 break
 
     for obj in op.inserts:
-        if regex.clean_name(basename[:-6].title(), use_re=preference.clean_names) not in bpy.data.collections:
-            bpy.data.collections['INSERTS'].children.link(bpy.data.collections.new(name=regex.clean_name(basename[:-6].title(), use_re=preference.clean_names)))
+        if regex.clean_name(basename[:-6].title(), use_re=preference.clean_datablock_names) not in bpy.data.collections:
+            bpy.data.collections['INSERTS'].children.link(bpy.data.collections.new(name=regex.clean_name(basename[:-6].title(), use_re=preference.clean_datablock_names)))
 
-        bpy.data.collections[regex.clean_name(basename[:-6].title(), use_re=preference.clean_names)].objects.link(obj)
+        bpy.data.collections[regex.clean_name(basename[:-6].title(), use_re=preference.clean_datablock_names)].objects.link(obj)
         obj.kitops.applied = False
 
         if obj.kitops.main:
@@ -194,7 +235,7 @@ def add(op, context):
 
     for material in imported.materials:
         try:
-            if not material.kitops.material:
+            if not material.kitops.material and material.users == 0:
                 bpy.data.materials.remove(material, do_unlink=True, do_id_user=True, do_ui_user=True)
         except: continue
 

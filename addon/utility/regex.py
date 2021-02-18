@@ -1,6 +1,5 @@
 import re
 
-
 def clean_name(name, use_re=False):
     if use_re:
         sub = re.sub(r'[_.-]', r' ', name[:-6] if name.endswith('.blend') else name).capitalize()

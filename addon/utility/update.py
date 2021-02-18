@@ -9,10 +9,8 @@ from bpy.utils import register_class, unregister_class, previews
 from . import addon, insert, math, modifier, ray, regex
 
 smart_mode = True
-try:
-    from . import smart
-except:
-    smart_mode = False
+try: from . import smart
+except: smart_mode = False
 
 
 def kpacks(prop, context):
@@ -35,19 +33,16 @@ def kpack(prop, context):
         for file in os.listdir(os.path.join(location, folder)):
             if file.endswith('.blend') and regex.clean_name(file, use_re=preference.clean_names) not in [blend.name for blend in category.blends]:
                 blend = category.blends.add()
-                blend.name = regex.clean_name(
-                    file, use_re=preference.clean_names)
+                blend.name = regex.clean_name(file, use_re=preference.clean_names)
                 blend.location = os.path.join(location, folder, file)
                 blend.icon = 'FILE_BLEND'
 
                 filepath = os.path.join(location, folder, file[:-6] + '.png')
                 if os.path.exists(filepath):
-                    thumb = insert.thumbnails[folder].load(
-                        os.path.basename(filepath), filepath, 'IMAGE')
+                    thumb = insert.thumbnails[folder].load(os.path.basename(filepath), filepath, 'IMAGE')
                     icon_id = thumb.icon_id
                 elif 'thumb.png' not in insert.thumbnails[folder]:
-                    thumb = insert.thumbnails[folder].load(
-                        'thumb.png', addon.path.default_thumbnail(), 'IMAGE')
+                    thumb = insert.thumbnails[folder].load('thumb.png', addon.path.default_thumbnail(), 'IMAGE')
                     icon_id = thumb.icon_id
                 else:
                     icon_id = insert.thumbnails[folder]['thumb.png'].icon_id
@@ -59,8 +54,7 @@ def kpack(prop, context):
         for folder in [file for file in os.listdir(master.location) if os.path.isdir(os.path.join(master.location, file))]:
             if regex.clean_name(folder, use_re=preference.clean_names) not in [category.name for category in option.kpack.categories]:
                 category = option.kpack.categories.add()
-                category.name = regex.clean_name(
-                    folder, use_re=preference.clean_names)
+                category.name = regex.clean_name(folder, use_re=preference.clean_names)
                 category.icon = 'FILE_FOLDER'
                 category.folder = folder
 
@@ -76,19 +70,16 @@ def kpack(prop, context):
                 add_blend(master.location, folder, category)
 
                 if not len(category.blends):
-                    option.kpack.categories.remove(
-                        [category.name for category in option.kpack.categories].index(category.name))
+                    option.kpack.categories.remove([category.name for category in option.kpack.categories].index(category.name))
             else:
-                category = option.kpack.categories[regex.clean_name(
-                    folder, use_re=preference.clean_names)]
+                category = option.kpack.categories[regex.clean_name(folder, use_re=preference.clean_names)]
 
                 add_blend(master.location, folder, category)
 
             images = insert.thumbnails[folder].images
             enum_items = []
             for index, image in enumerate(images):
-                enum_items.append(
-                    (images[index][0], images[index][0][:14], images[index][0], images[index][1], index))
+                enum_items.append((images[index][0], images[index][0][:14], images[index][0], images[index][1], index))
 
             insert.thumbnails[folder].images = enum_items
 
@@ -96,7 +87,7 @@ def kpack(prop, context):
 
     reset = False
     for master in preference.folders:
-        if master.location and master.location != 'Choose Path':
+        if master.location and master.location != 'Choose Path' and master.visible:
             if os.path.isdir(master.location):
                 add_folder(master)
             else:
@@ -122,8 +113,7 @@ def icons():
 
     for file in os.listdir(addon.path.icons()):
         if file.endswith('.png'):
-            preview.load(
-                file[:-4], os.path.join(addon.path.icons(), file), 'IMAGE')
+            preview.load(file[:-4], os.path.join(addon.path.icons(), file), 'IMAGE')
 
     addon.icons['main'] = preview
 
@@ -133,11 +123,9 @@ def libpath(prop, context):
 
     for folder in preference.folders:
         if folder.location and folder.location != 'Choose Path':
-            folder['location'] = os.path.abspath(
-                bpy.path.abspath(folder.location))
+            folder['location'] = os.path.abspath(bpy.path.abspath(folder.location))
             if not folder.name:
-                folder.name = regex.clean_name(
-                    os.path.basename(folder.location), use_re=True)
+                folder.name = regex.clean_name(os.path.basename(folder.location), use_re=True)
         elif not folder.location:
             folder['location'] = 'Choose Path'
 
@@ -147,10 +135,8 @@ def libpath(prop, context):
 def thumbnails(prop, context):
     option = addon.option()
 
-    prop['active_index'] = [
-        blend.name for blend in prop.blends].index(prop.thumbnail)
-    option.kpack.active_index = [
-        kpack.name for kpack in option.kpack.categories].index(prop.name)
+    prop['active_index'] = [blend.name for blend in prop.blends].index(prop.thumbnail)
+    option.kpack.active_index = [kpack.name for kpack in option.kpack.categories].index(prop.name)
     # bpy.ops.ko.add_insert('INVOKE_DEFAULT', location=prop.blends[prop.active_index].location)
 
 
@@ -218,10 +204,8 @@ def insert_scale(prop, context):
 
     if option.auto_scale:
         if not insert.operator:
-            print("not insert operator")
             mains = insert.collect(context.selected_objects, mains=True)
         else:
-            print("operator")
             mains = [insert.operator.main]
 
         modifiers_shown = bool(option.show_modifiers)
@@ -233,8 +217,7 @@ def insert_scale(prop, context):
                 init_hide = copy(main.hide_viewport)
                 main.hide_viewport = False
 
-                scale = getattr(preference, '{}_scale'.format(
-                    preference.insert_scale.lower()))
+                scale = getattr(preference, '{}_scale'.format(preference.insert_scale.lower()))
 
                 if not main.kitops.insert_target:
                     continue
@@ -251,14 +234,11 @@ def insert_scale(prop, context):
                 if dimension.z > getattr(dimension, axis):
                     axis = 'z'
 
-                setattr(main.scale, axis, largest_dimension /
-                        getattr(dimension, axis) * getattr(main.scale, axis))
+                setattr(main.scale, axis, largest_dimension / getattr(dimension, axis) * getattr(main.scale, axis))
 
                 remaining_axis = [a for a in 'xyz' if a != axis]
-                setattr(main.scale, remaining_axis[0], getattr(
-                    main.scale, axis))
-                setattr(main.scale, remaining_axis[1], getattr(
-                    main.scale, axis))
+                setattr(main.scale, remaining_axis[0], getattr(main.scale, axis))
+                setattr(main.scale, remaining_axis[1], getattr(main.scale, axis))
 
                 main.hide_viewport = init_hide
 
@@ -299,12 +279,10 @@ def sync_sort(prop, context):
             addon.hops().property[option] = getattr(prop, option)
 
         elif not hasattr(addon.hops().property, option):
-            print(
-                F'Unable to sync sorting options with Hard Ops; KIT OPS {option}\nUpdate Hard Ops!')
+            print(F'Unable to sync sorting options with Hard Ops; KIT OPS {option}\nUpdate Hard Ops!')
 
         if addon.bc() and hasattr(addon.bc().behavior, option):
             addon.bc().behavior[option] = getattr(prop, option)
 
         elif not hasattr(addon.bc().behavior, option):
-            print(
-                F'Unable to sync sorting options with Box Cutter; KIT OPS {option}\nUpdate Box Cutter!')
+            print(F'Unable to sync sorting options with Box Cutter; KIT OPS {option}\nUpdate Box Cutter!')

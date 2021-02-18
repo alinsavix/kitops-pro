@@ -1,3 +1,5 @@
+import re
+
 from copy import deepcopy as copy
 
 import bpy
@@ -236,7 +238,7 @@ class add_insert():
 
         prev_name = ''
         if self.material and self.init_active and self.import_material:
-            if hasattr(self.init_active, 'material_slots') and len(self.init_active.material_slots[:]):
+            if hasattr(self.init_active, 'material_slots') and len(self.init_active.material_slots[:]) and self.init_active.material_slots[0].material:
                 prev_name = self.init_active.material_slots[0].material.name
             self.init_active.data.materials.clear()
             self.init_active.data.materials.append(self.import_material)
@@ -475,16 +477,16 @@ class remove_insert_properties():
     bl_options = {'UNDO'}
 
     remove: BoolProperty()
+    uuid: StringProperty()
 
-    @classmethod
-    def poll(cls, context):
-        return context.active_object
+    # @classmethod
+    # def poll(cls, context):
+    #     return context.active_object or cls.uuid
 
 
     def execute(self, context):
-        # inserts = insert.collect(context.selected_objects)
-
-        for obj in context.selected_objects:# inserts:
+        objects = context.selected_objects if not self.uuid else [obj for obj in bpy.data.objects if obj.kitops.id == self.uuid]
+        for obj in objects:
             obj.kitops['insert'] = False
             obj.kitops['insert_target'] = None
             obj.kitops['mirror_target'] = None
@@ -492,7 +494,7 @@ class remove_insert_properties():
             obj.kitops['main_object'] = None
 
         if self.remove:
-            bpy.ops.object.delete(confirm=False)
+            bpy.ops.object.delete({'active_object': objects[0], 'selected_objects': objects}, confirm=False)
 
         return {'FINISHED'}
 
@@ -565,6 +567,7 @@ class KO_OT_convert_to_mesh(Operator):
     def poll(cls, context):
         return context.selected_objects
 
+
     def execute(self, context):
         bpy.ops.object.convert(target='MESH')
 
@@ -590,6 +593,79 @@ class KO_OT_convert_to_mesh(Operator):
         return {'FINISHED'}
 
 
+class KO_OT_remove_wire_inserts(Operator):
+    bl_idname = 'ko.remove_wire_inserts'
+    bl_label = 'Remove Unused Wire INSERTS'
+    bl_description = 'Remove unused wire objects from the INSERTS collection, keeping transforms on child objects'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return 'INSERTS' in bpy.data.collections
+
+
+    def execute(self, context):
+        collection = bpy.data.collections['INSERTS']
+        wires = {obj for obj in collection.all_objects if obj.display_type in {'WIRE', 'BOUNDS'}}
+
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH':
+                continue
+
+            for mod in obj.modifiers:
+                if mod.type == 'BOOLEAN' and mod.object in wires:
+                    wires.remove(mod.object)
+
+        for obj in collection.all_objects:
+            if obj.parent in wires:
+                obj.matrix_local = obj.matrix_world
+                obj.parent = None
+
+        for obj in wires:
+            bpy.data.objects.remove(obj)
+
+        return {'FINISHED'}
+
+
+class KO_OT_clean_duplicate_materials(Operator):
+    bl_idname = 'ko.clean_duplicate_materials'
+    bl_label = 'Clean Duplicate Materials'
+    bl_description = 'Find duplicate materials by name, remap users and remove them'
+    bl_options = {'REGISTER', 'UNDO'}
+
+
+    def execute(self, context):
+        count = len(bpy.data.materials)
+
+        for mat in bpy.data.materials[:]:
+            if re.search('[0-9][0-9][0-9]$', mat.name):
+                original = mat.name[:-4]
+
+                if original in bpy.data.materials:
+                    mat.user_remap(bpy.data.materials[original])
+                    bpy.data.materials.remove(mat)
+
+        self.report({'INFO'}, F'Removed {count - len(bpy.data.materials)} materials')
+        return {'FINISHED'}
+
+
+class KO_OT_move_folder(Operator):
+    bl_idname = 'ko.move_folder'
+    bl_label = 'Move Folder'
+    bl_description = 'Move the chosen folder up or down in the list'
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    index: IntProperty()
+    direction: IntProperty()
+
+
+    def execute(self, context):
+        preference = addon.preference()
+        neighbor = max(0, self.index + self.direction)
+        preference.folders.move(neighbor, self.index)
+        return {'FINISHED'}
+
+
 classes = [
     KO_OT_purchase,
     KO_OT_store,
@@ -606,7 +682,10 @@ classes = [
     KO_OT_remove_insert_properties_x,
     KO_OT_export_settings,
     KO_OT_import_settings,
-    KO_OT_convert_to_mesh]
+    KO_OT_convert_to_mesh,
+    KO_OT_remove_wire_inserts,
+    KO_OT_clean_duplicate_materials,
+    KO_OT_move_folder]
 
 
 def register():

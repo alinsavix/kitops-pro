@@ -56,7 +56,6 @@ class KO_PT_ui(Panel):
 
             if len(option.kpack.categories):
                 # if not context.scene.kitops.thumbnail:
-                category = option.kpack.categories[option.kpack.active_index]
 
                 layout.label(text='KPACKS')
 
@@ -69,42 +68,45 @@ class KO_PT_ui(Panel):
                 row.prop(option, 'kpacks', text='')
                 row.operator('ko.refresh_kpacks', text='', icon='FILE_REFRESH')
 
-                row = column.row(align=True)
+                if option.kpack.active_index < len(option.kpack.categories):
+                    category = option.kpack.categories[option.kpack.active_index]
 
-                sub = row.row(align=True)
-                sub.scale_y = 6
-                sub.operator('ko.previous_kpack', text='', icon='TRIA_LEFT')
+                    row = column.row(align=True)
 
-                row.template_icon_view(category, 'thumbnail', show_labels=preference.thumbnail_labels)
+                    sub = row.row(align=True)
+                    sub.scale_y = 6
+                    sub.operator('ko.previous_kpack', text='', icon='TRIA_LEFT')
 
-                sub = row.row(align=True)
-                sub.scale_y = 6
-                sub.operator('ko.next_kpack', text='', icon='TRIA_RIGHT')
+                    row.template_icon_view(category, 'thumbnail', show_labels=preference.thumbnail_labels)
 
-                row = column.row(align=True)
-                row.scale_y = 1.5
-                op = row.operator('ko.add_insert')
-                op.location = category.blends[category.active_index].location
-                op.material = False
+                    sub = row.row(align=True)
+                    sub.scale_y = 6
+                    sub.operator('ko.next_kpack', text='', icon='TRIA_RIGHT')
 
-                row.scale_y = 1.5
-                op = row.operator('ko.add_insert_material')
-                op.location = category.blends[category.active_index].location
-                op.material = True
+                    row = column.row(align=True)
+                    row.scale_y = 1.5
+                    op = row.operator('ko.add_insert')
+                    op.location = category.blends[category.active_index].location
+                    op.material = False
 
-                row = layout.row()
-                row.label(text='INSERT Name: {}'.format(category.blends[category.active_index].name))
+                    row.scale_y = 1.5
+                    op = row.operator('ko.add_insert_material')
+                    op.location = category.blends[category.active_index].location
+                    op.material = True
 
-                if smart_enabled:
                     row = layout.row()
-                    row.operator('ko.edit_insert')
+                    row.label(text='INSERT Name: {}'.format(category.blends[category.active_index].name))
 
-                    layout.separator()
+                    if smart_enabled:
+                        row = layout.row()
+                        row.operator('ko.edit_insert')
 
-                    split = layout.split(factor=0.3)
-                    split.label(text='Mode')
-                    row = split.row()
-                    row.prop(preference, 'mode', expand=True)
+                        layout.separator()
+
+                        split = layout.split(factor=0.3)
+                        split.label(text='Mode')
+                        row = split.row()
+                        row.prop(preference, 'mode', expand=True)
 
                 column = layout.column(align=True)
                 column.enabled = option.auto_scale
@@ -137,11 +139,13 @@ class KO_PT_ui(Panel):
                     row.scale_y = 1.5
                     op = row.operator('ko.remove_insert_properties')
                     op.remove = False
+                    op.uuid = ''
 
                     sub = row.row(align=True)
                     sub.enabled = context.active_object.kitops.insert if context.active_object else False
                     op = sub.operator('ko.remove_insert_properties_x', text='', icon='X')
                     op.remove = True
+                    op.uuid = ''
 
                     # if not bpy.data.filepath and bpy.data.is_dirty:
                     #     row = layout.row()
@@ -314,6 +318,14 @@ class KO_PT_ui(Panel):
                 row.scale_y = 1.5
                 row.operator('ko.close_thumbnail_scene' if smart_enabled else 'ko.purchase')
 
+            row = layout.row()
+            row.scale_y = 1.5
+            row.operator('ko.remove_wire_inserts')
+
+            row = layout.row()
+            row.scale_y = 1.5
+            row.operator('ko.clean_duplicate_materials')
+
             layout.separator()
 
             row = layout.row()
@@ -344,6 +356,14 @@ class KO_PT_ui(Panel):
             #     row.operator('ko.align_vertical' if smart_enabled else 'ko.purchase', text='', icon_value=addon.icons['main']['align-vert'].icon_id)
             #     row.operator('ko.stretch_wide' if smart_enabled else 'ko.purchase', text='', icon_value=addon.icons['main']['stretch-wide'].icon_id)
             #     row.operator('ko.stretch_tall' if smart_enabled else 'ko.purchase', text='', icon_value=addon.icons['main']['stretch-tall'].icon_id)
+
+            row = layout.row()
+            row.scale_y = 1.5
+            row.operator('ko.remove_wire_inserts')
+
+            row = layout.row()
+            row.scale_y = 1.5
+            row.operator('ko.clean_duplicate_materials')
 
             layout.separator()
 

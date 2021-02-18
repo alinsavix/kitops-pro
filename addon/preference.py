@@ -16,6 +16,11 @@ class folder(PropertyGroup):
         name = 'Path Name',
         default = '')
 
+    visible: BoolProperty(
+        name = 'Visible',
+        description = 'Show KPACKS from this folder',
+        default = True)
+
     location: StringProperty(
         name = 'Path',
         description = 'Path to KIT OPS library',
@@ -63,7 +68,12 @@ class kitops(AddonPreferences):
         name = 'Clean names',
         description = 'Capatilize and clean up the names used in the UI from the KPACKS',
         update = update.kpack,
-        default = True)
+        default = False)
+
+    clean_datablock_names: BoolProperty(
+        name = 'Clean datablock names',
+        description = 'Capatilize and clean up the names used for datablocks within INSERTS',
+        default = False)
 
     thumbnail_labels: BoolProperty(
         name = 'Thumbnail labels',
@@ -409,9 +419,14 @@ class kitops(AddonPreferences):
             row.label(text='Boolean Solver')
             row.prop(self, 'boolean_solver', expand=True)
 
-        row = layout.row()
-        row.label(text='Clean list names')
-        row.prop(self, 'clean_names', text='')
+        # TODO This are disabled for the moment to test disabling this logic, can be removed if there are no issues. (02/2021)
+        # row = layout.row()
+        # row.label(text='Clean list names')
+        # row.prop(self, 'clean_names', text='')
+
+        # row = layout.row()
+        # row.label(text='Clean INSERT names')
+        # row.prop(self, 'clean_datablock_names', text='')
 
         row = layout.row()
         row.label(text='Thumbnail labels')
@@ -511,25 +526,33 @@ class kitops(AddonPreferences):
 
 
     def filepaths(self, context, layout):
-
         for index, folder in enumerate(self.folders):
-            row = layout.row()
-            split = row.split(factor=0.2)
-            split.prop(folder, 'name', text='', emboss=False)
+            row1 = layout.row()
+            split = row1.split(factor=0.3)
 
-            split.prop(folder, 'location', text='')
+            row2 = split.row(align=True)
+            row2.prop(folder, 'name', text='', emboss=False)
+            row2.prop(folder, 'visible', text='', icon='HIDE_OFF' if folder.visible else 'HIDE_ON', emboss=False)
 
-            op = row.operator('ko.remove_kpack_path', text='', emboss=False, icon='PANEL_CLOSE')
+            row3 = split.row(align=True)
+            op = row3.operator('ko.move_folder', text='', icon='TRIA_UP')
+            op.index, op.direction = index, -1
+            op = row3.operator('ko.move_folder', text='', icon='TRIA_DOWN')
+            op.index, op.direction = index, 1
+            row3.prop(folder, 'location', text='')
+
+            op = row1.operator('ko.remove_kpack_path', text='', emboss=False, icon='PANEL_CLOSE')
             op.index = index
 
         row = layout.row()
-        split = row.split(factor=0.2)
+        split = row.split(factor=0.3)
 
         split.separator()
         split.operator('ko.add_kpack_path', text='', icon='PLUS')
 
         sub = row.row()
         sub.operator('ko.refresh_kpacks', text='', emboss=False, icon='FILE_REFRESH')
+
 
 classes = [
     folder,
