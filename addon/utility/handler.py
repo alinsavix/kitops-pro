@@ -4,13 +4,13 @@ import traceback
 import bpy
 from bpy.app.handlers import persistent, depsgraph_update_pre, depsgraph_update_post, load_pre, load_post, save_pre
 
-from . import addon, shader, insert, remove, update
+from . import addon, shader, insert, remove, update, smart
 
-smart_enabled = True
-try: from . import smart
+authoring_enabled = True
+try: from . import matrixmath
 except:
     traceback.print_exc()
-    smart_enabled = False
+    authoring_enabled = False
 
 #TODO: switch to timer modal
 class pre:
@@ -20,18 +20,17 @@ class pre:
     def depsgraph(none):
         if not insert.authoring():
 
-            if smart_enabled:
-                smart.insert_depsgraph_update_pre()
+            smart.insert_depsgraph_update_pre()
 
             insert.correct_ids()
 
-        elif not smart_enabled:
+        elif not authoring_enabled:
             for obj in bpy.data.objects:
                 try:
                     obj.select_set(False)
                 except RuntimeError: pass
 
-        if not smart_enabled:
+        if not authoring_enabled:
             for obj in bpy.data.objects:
                 if obj.kitops.main and not obj.kitops.id:
                     sys.exit()
@@ -44,7 +43,7 @@ class pre:
 
         # shader.handler = None
 
-        if not smart_enabled:
+        if not authoring_enabled:
             for obj in bpy.data.objects:
                 if obj.kitops.main and not obj.kitops.id:
                     sys.exit()
@@ -54,14 +53,10 @@ class pre:
     def save(none):
         option = addon.option()
 
-        # if shader.handler:
-        #     bpy.types.SpaceView3D.draw_handler_remove(shader.handler, 'WINDOW')
-        #     shader.handler = None
+        if authoring_enabled:
+            matrixmath.authoring_save_pre()
 
-        if smart_enabled:
-            smart.authoring_save_pre()
-
-        if not smart_enabled:
+        if not authoring_enabled:
             for obj in bpy.data.objects:
                 if obj.kitops.main and not obj.kitops.id:
                     sys.exit()
@@ -76,23 +71,21 @@ class post:
         option = addon.option()
 
         if insert.authoring():
-            if smart_enabled:
-                smart.authoring_depsgraph_update_post()
+            if authoring_enabled:
+                matrixmath.authoring_depsgraph_update_post()
         else:
             scene = bpy.context.scene
             if not insert.operator and scene and hasattr(scene, 'kitops') and scene.kitops and not scene.kitops.thumbnail:
                 for obj in [ob for ob in bpy.data.objects if ob.kitops.duplicate]:
                     remove.object(obj, data=True)
 
-            if addon.preference().mode == 'SMART' or addon.preference().enable_auto_select:
+            if addon.preference().mode == 'SMART':
                 insert.select()
 
             if not insert.operator:
+                smart.toggles_depsgraph_update_post()
 
-                if smart_enabled:
-                    smart.toggles_depsgraph_update_post()
-
-        if not smart_enabled:
+        if not authoring_enabled:
             for obj in bpy.data.objects:
                 if obj.kitops.main and not obj.kitops.id:
                     sys.exit()
@@ -105,13 +98,13 @@ class post:
         # shader.handler = bpy.types.SpaceView3D.draw_handler_add(shader.border, (None, bpy.context), 'WINDOW', 'POST_PIXEL')
 
         if insert.authoring():
-            if smart_enabled:
-                smart.authoring_load_post()
+            if authoring_enabled:
+                matrixmath.authoring_load_post()
             else:
                 for obj in bpy.data.objects:
                     obj.kitops.applied = True
 
-        if not smart_enabled:
+        if not authoring_enabled:
             for obj in bpy.data.objects:
                 if obj.kitops.main and not obj.kitops.id:
                     sys.exit()

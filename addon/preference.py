@@ -8,6 +8,8 @@ from bpy.utils import register_class, unregister_class
 
 from . utility import addon, shader, update, modifier
 
+from . t3dn_bip.utils import support_pillow
+
 
 class folder(PropertyGroup):
     icon: StringProperty(default='FILE_FOLDER')
@@ -78,11 +80,6 @@ class kitops(AddonPreferences):
     thumbnail_labels: BoolProperty(
         name = 'Thumbnail labels',
         description = 'Displays names of INSERTS under the thumbnails in the preview popup',
-        default = True)
-
-    enable_auto_select: BoolProperty(
-        name = 'Enable auto select',
-        description = 'Enable auto select in regular mode',
         default = True)
 
     border_color: FloatVectorProperty(
@@ -433,8 +430,6 @@ class kitops(AddonPreferences):
         row.prop(self, 'thumbnail_labels', text='')
 
         row = layout.row()
-        row.label(text='Enable auto select in regular mode')
-        row.prop(self, 'enable_auto_select', text='')
 
         row = layout.row()
         row.label(text='Sort Modifiers')
@@ -464,23 +459,28 @@ class kitops(AddonPreferences):
             row.scale_x = 1.5
             row.popover('KO_PT_sort_last', text='', icon='SORT_ASC')
 
-        # if self.sort_modifiers:
-        #     row = layout.row(align=True)
-        #     row.alignment = 'RIGHT'
-        #     row.prop(self, 'sort_bevel_last', text='', icon='SORT_ASC')
-        #     row.separator()
-        #     row.prop(self, 'sort_bevel', text='', icon='MOD_BEVEL')
-        #     row.prop(self, 'sort_weighted_normal', text='', icon='MOD_NORMALEDIT')
-        #     row.prop(self, 'sort_array', text='', icon='MOD_ARRAY')
-        #     row.prop(self, 'sort_mirror', text='', icon='MOD_MIRROR')
-        #     row.prop(self, 'sort_solidify', text='', icon='MOD_SOLIDIFY')
-        #     row.prop(self, 'sort_simple_deform', text='', icon='MOD_SIMPLEDEFORM')
-        #     row.prop(self, 'sort_triangulate', text='', icon='MOD_TRIANGULATE')
-        #     row.prop(self, 'sort_decimate', text='', icon='MOD_DECIM')
-
         row = layout.row()
         row.operator('ko.export_settings')
         row.operator('ko.import_settings')
+
+        box = layout.box()
+        supported = support_pillow()
+
+        col = box.column()
+        if supported:
+            col.label(text="Thumbnail Caching: Enabled")
+        else:
+            col.label(text="Thumbnail Caching: Disabled")
+
+        col.separator()
+        col.label(text="While the thumbnail cache accelerator is not required, it provides a superior user experience. ")
+        col.label(text="You must have a working INTERNET connection on order to install it, and it only needs to install once.")
+        col.separator()
+        
+        if supported:
+            col.operator('ko.install_pillow', text="Thumbnail Caching Engine Installed Successfully")
+        else:
+            col.operator('ko.install_pillow', text="Install Thumbnail Caching Engine")
 
 
     def theme(self, context, layout):

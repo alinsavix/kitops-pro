@@ -10,6 +10,7 @@ success = bool()
 location = Vector()
 normal = Vector()
 face_index = int()
+to_track_quat = None
 
 
 def cast(op):
@@ -17,6 +18,7 @@ def cast(op):
     global location
     global normal
     global face_index
+    global to_track_quat
 
     matrix = op.duplicate.matrix_world.copy()
 
@@ -34,7 +36,9 @@ def cast(op):
 
     if success:
         location = op.duplicate.matrix_world @ location
+        to_track_quat = op.duplicate.matrix_world.to_quaternion() @ normal.to_track_quat('Z', 'Y')
         normal = op.duplicate.matrix_world.to_3x3() @ normal
+        
 
     bm.free()
 

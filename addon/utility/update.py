@@ -4,9 +4,9 @@ from copy import deepcopy as copy
 
 import bpy
 
-from bpy.utils import register_class, unregister_class, previews
+from bpy.utils import register_class, unregister_class
 
-from . import addon, insert, math, modifier, ray, regex
+from . import addon, insert, math, modifier, ray, regex, id, enums, previews
 
 smart_mode = True
 try: from . import smart
@@ -19,12 +19,17 @@ def kpacks(prop, context):
     for index, category in enumerate(option.kpack.categories):
         if category.name == option.kpacks:
             option.kpack.active_index = index
-
+            if (index < len(option.kpack.categories) and \
+                option.kpack.categories[index].blends):
+                thumb_active_index = option.kpack.categories[index].active_index
+                thumb_name = option.kpack.categories[index].blends[thumb_active_index].name
+                option.kpack.categories[index].thumbnail = option.kpack.categories[index].blends[thumb_active_index].name
             break
 
 def kpack(prop, context):
     preference = addon.preference()
     option = addon.option()
+    previews.clear()
 
     if not option:
         return
@@ -35,37 +40,21 @@ def kpack(prop, context):
                 blend = category.blends.add()
                 blend.name = regex.clean_name(file, use_re=preference.clean_names)
                 blend.location = os.path.join(location, folder, file)
-                blend.icon = 'FILE_BLEND'
 
                 filepath = os.path.join(location, folder, file[:-6] + '.png')
                 if os.path.exists(filepath):
-                    thumb = insert.thumbnails[folder].load(os.path.basename(filepath), filepath, 'IMAGE')
-                    icon_id = thumb.icon_id
-                elif 'thumb.png' not in insert.thumbnails[folder]:
-                    thumb = insert.thumbnails[folder].load('thumb.png', addon.path.default_thumbnail(), 'IMAGE')
-                    icon_id = thumb.icon_id
+                    icon_path = filepath
                 else:
-                    icon_id = insert.thumbnails[folder]['thumb.png'].icon_id
+                    icon_path = addon.path.default_thumbnail()
 
-                blend.icon_id = icon_id
-                insert.thumbnails[folder].images.append([blend.name, icon_id])
+                blend.icon_path = icon_path
 
     def add_folder(master):
         for folder in [file for file in os.listdir(master.location) if os.path.isdir(os.path.join(master.location, file))]:
             if regex.clean_name(folder, use_re=preference.clean_names) not in [category.name for category in option.kpack.categories]:
                 category = option.kpack.categories.add()
                 category.name = regex.clean_name(folder, use_re=preference.clean_names)
-                category.icon = 'FILE_FOLDER'
                 category.folder = folder
-
-                if folder in insert.thumbnails:
-                    previews.remove(insert.thumbnails[folder])
-
-                thumbnails = previews.new()
-                thumbnails.location = os.path.join(master.location, folder)
-                thumbnails.images = []
-
-                insert.thumbnails[folder] = thumbnails
 
                 add_blend(master.location, folder, category)
 
@@ -76,14 +65,28 @@ def kpack(prop, context):
 
                 add_blend(master.location, folder, category)
 
-            images = insert.thumbnails[folder].images
-            enum_items = []
-            for index, image in enumerate(images):
-                enum_items.append((images[index][0], images[index][0][:14], images[index][0], images[index][1], index))
+            if len(category.blends):
+                name = category.name
+                number = id.convert_to_number(name)
+                icon_path = category.blends[category.active_index].icon_path
+                enums.kitops_category_enums.append([name, name, '', icon_path, number])
 
-            insert.thumbnails[folder].images = enum_items
+                enum_items_id = []
+
+                for index, blend in enumerate(category.blends):
+                    name = blend.name
+                    number = id.convert_to_number(name)
+                    icon_path = blend.icon_path
+                    enum_items_id.append([name, name[:14], name, icon_path, number])
+
+                enums.kitops_insert_enum_map[folder] = enum_items_id
+
+                # NOTE: Enum items are stored as lists instead of tuples, with icon_path instead of icon_id.
+                # In the items getter functions, these will be overwritten properly.
 
     option.kpack.categories.clear()
+    enums.kitops_category_enums.clear()
+    enums.kitops_insert_enum_map.clear()
 
     reset = False
     for master in preference.folders:
@@ -101,6 +104,12 @@ def kpack(prop, context):
     if reset:
         kpack(None, context)
 
+    elif len(enums.kitops_category_enums):
+        item = enums.kitops_category_enums[0]
+        option.kpacks = item[0]
+        option.kpack.active_index = 0
+        if option.kpack.categories and option.kpack.categories[0].blends:
+            option.kpack.categories[0].thumbnail = option.kpack.categories[0].blends[0].name
 
 def options():
     option = addon.option()
@@ -109,13 +118,12 @@ def options():
 
 
 def icons():
-    preview = previews.new()
+    addon.icons.clear()
 
     for file in os.listdir(addon.path.icons()):
         if file.endswith('.png'):
-            preview.load(file[:-4], os.path.join(addon.path.icons(), file), 'IMAGE')
-
-    addon.icons['main'] = preview
+            addon.icons[file[:-4]] = os.path.join(addon.path.icons(), file)
+            previews.get(addon.icons[file[:-4]])
 
 
 def libpath(prop, context):
@@ -134,15 +142,9 @@ def libpath(prop, context):
 
 def thumbnails(prop, context):
     option = addon.option()
-
     prop['active_index'] = [blend.name for blend in prop.blends].index(prop.thumbnail)
     option.kpack.active_index = [kpack.name for kpack in option.kpack.categories].index(prop.name)
-    # bpy.ops.ko.add_insert('INVOKE_DEFAULT', location=prop.blends[prop.active_index].location)
 
-
-def active_index(prop, context):
-    pass
-    # bpy.ops.ko.add_insert('INVOKE_DEFAULT', location=prop.blends[prop.active_index].location)
 
 
 def mode(prop, context):
@@ -153,6 +155,9 @@ def mode(prop, context):
 
         if prop.mode == 'REGULAR':
             obj.kitops['insert_target'] = None
+
+    if prop.mode == 'SMART':
+        insert.select()
 
 
 def show_modifiers(prop, context):
@@ -189,7 +194,7 @@ def show_wire_objects(prop, context):
 
 def location():
     if ray.success:
-        track_quaternion = ray.normal.to_track_quat('Z', 'Y')
+        track_quaternion = ray.to_track_quat
         matrix = track_quaternion.to_matrix().to_4x4()
 
         scale = insert.operator.main.matrix_world.to_scale()

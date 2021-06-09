@@ -4,6 +4,7 @@ from copy import deepcopy as copy
 
 import bpy
 
+from math import radians
 from mathutils import *
 from pathlib import Path
 
@@ -12,11 +13,13 @@ from bpy.props import *
 from bpy.utils import register_class, unregister_class
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from .. utility import addon, backup, bbox, dpi, insert, ray, remove, update, view3d
+from .. utility import addon, backup, bbox, dpi, insert, ray, remove, update, view3d, collections, smart
 
-smart_enabled = True
-try: from .. utility import smart
-except: smart_enabled = False
+from .. t3dn_bip import ops
+
+authoring_enabled = True
+try: from .. utility import authoring_enabled
+except: authoring_enabled = False
 
 
 class KO_OT_purchase(Operator):
@@ -143,7 +146,6 @@ class KO_OT_previous_kpack(Operator):
 
         return {'FINISHED'}
 
-
 class add_insert():
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -170,13 +172,19 @@ class add_insert():
 
     import_material = None
 
+    original_scale : FloatVectorProperty(default=[1,1,1])
+
+    scale_amount : FloatProperty(default=1)
+
+    rotation_amount : FloatProperty(default=0)
+
     @classmethod
     def poll(cls, context):
         return not context.space_data.region_quadviews and not context.space_data.local_view
 
 
     def invoke(self, context, event):
-        global smart_enabled
+        global authoring_enabled
 
         preference = addon.preference()
 
@@ -185,27 +193,7 @@ class add_insert():
         self.init_active = bpy.data.objects[context.active_object.name] if context.active_object and context.active_object.select_get() else None
         self.init_selected = [bpy.data.objects[obj.name] for obj in context.selected_objects]
 
-        #TODO: collection helper: collection.add
-        if 'INSERTS' not in bpy.data.collections:
-            context.scene.collection.children.link(bpy.data.collections.new(name='INSERTS'))
-        else:
-            objects = bpy.data.collections['INSERTS'].objects[:]
-            children = bpy.data.collections['INSERTS'].children[:]
-
-            bpy.data.collections.remove(bpy.data.collections['INSERTS'])
-
-            context.scene.collection.children.link(bpy.data.collections.new(name='INSERTS'))
-
-            for obj in objects:
-                bpy.data.collections['INSERTS'].objects.link(obj)
-
-            for child in children:
-                bpy.data.collections['INSERTS'].children.link(child)
-
-        for obj in bpy.data.objects:
-            for modifier in obj.modifiers:
-                if modifier.type == 'BOOLEAN' and not modifier.object:
-                    obj.modifiers.remove(modifier)
+        collections.init(context)
 
         if self.init_active:
             if self.init_active.kitops.insert and self.init_active.kitops.insert_target:
@@ -268,7 +256,13 @@ class add_insert():
         if self.main.kitops.animated:
             bpy.ops.screen.animation_play()
 
+
+        option = addon.option()
         if self.init_selected and self.boolean_target:
+            self.original_scale = self.main.scale.copy()
+            if not option.auto_scale:
+                self.main.scale = self.main.scale * self.scale_amount
+
             self.mouse = Vector((event.mouse_x, event.mouse_y))
             self.mouse.x -= view3d.region().x - preference.insert_offset_x * dpi.factor()
             self.mouse.y -= view3d.region().y - preference.insert_offset_y * dpi.factor()
@@ -293,10 +287,13 @@ class add_insert():
             return {'FINISHED'}
 
         if event.type == 'MOUSEMOVE':
+            temp_scale = self.main.scale.copy()
             self.mouse = Vector((event.mouse_x, event.mouse_y))
             self.mouse.x -= view3d.region().x - preference.insert_offset_x * dpi.factor()
             self.mouse.y -= view3d.region().y - preference.insert_offset_y * dpi.factor()
             update.location()
+            self.main.scale = temp_scale
+            self.main.rotation_euler.rotate_axis("Z", radians(self.rotation_amount))
 
         insert.hide_handler(self)
 
@@ -309,7 +306,10 @@ class add_insert():
             if ray.location:
                 if event.shift and preference.mode == 'SMART':
                     self.exit(context)
-                    bpy.ops.ko.add_insert('INVOKE_DEFAULT', location=self.location)
+                    bpy.ops.ko.add_insert('INVOKE_DEFAULT', 
+                        location=self.location,
+                        rotation_amount=self.rotation_amount,
+                        scale_amount=(self.main.scale.magnitude / Vector(self.original_scale).magnitude))
                 else:
                     self.exit(context)
                 return{'FINISHED'}
@@ -318,7 +318,13 @@ class add_insert():
                 self.exit(context, clear=True)
                 return {'CANCELLED'}
 
-        elif event.type == 'WHEELDOWNMOUSE':
+        elif event.type == 'WHEELDOWNMOUSE':      
+            if event.alt:
+                rotation_amount = 15 if not event.shift else 1
+                self.main.rotation_euler.rotate_axis("Z", radians(rotation_amount))
+                self.rotation_amount+=rotation_amount
+                return {'RUNNING_MODAL'}
+
             if option.auto_scale:
                 if self.insert_scale.index(preference.insert_scale) + 1 < len(self.insert_scale):
                     preference.insert_scale = self.insert_scale[self.insert_scale.index(preference.insert_scale) + 1]
@@ -328,6 +334,13 @@ class add_insert():
             return {'RUNNING_MODAL'}
 
         elif event.type == 'WHEELUPMOUSE':
+            if event.alt:
+                rotation_amount = 15 if not event.shift else 1
+                self.main.rotation_euler.rotate_axis("Z", radians(-rotation_amount))
+                self.rotation_amount-=rotation_amount
+                return {'RUNNING_MODAL'}
+
+
             if option.auto_scale:
                 if self.insert_scale.index(preference.insert_scale) - 1 >= 0:
                     preference.insert_scale = self.insert_scale[self.insert_scale.index(preference.insert_scale) - 1]
@@ -369,6 +382,14 @@ class add_insert():
                 else:
                     obj.select_set(True)
 
+                if self.boolean_target and obj.parent is None:
+                    # Add parent if we have a boolean target.
+                    insert.parent_objects(obj, self.boolean_target)
+
+
+                    # obj.parent = self.boolean_target
+                    # return
+
         #TODO: collection helper: collection.remove
         if 'INSERTS' in bpy.data.collections:
             for child in bpy.data.collections['INSERTS'].children:
@@ -400,8 +421,8 @@ class add_insert():
 class KO_OT_add_insert(Operator, add_insert):
     bl_idname = 'ko.add_insert'
     bl_label = 'Add INSERT'
-    bl_description = 'Add INSERT to the scene'
-    # bl_options = {'REGISTER', 'UNDO'}
+    bl_description = ('Add INSERT to the scene \n'
+                        ' Alt + mouse scroll - rotate insert')
 
 
 class KO_OT_add_insert_material(Operator, add_insert):
@@ -439,11 +460,8 @@ class KO_OT_select_inserts(Operator):
         preference = addon.preference()
         option = addon.option()
 
-        if preference.mode == 'SMART':
-            layout.prop(option, 'auto_select')
-
         column = layout.column()
-        column.active = not option.auto_select or preference.mode == 'REGULAR'
+        column.active = preference.mode == 'REGULAR'
         column.prop(self, 'solids')
         column.prop(self, 'cutters')
         column.prop(self, 'wires')
@@ -665,6 +683,19 @@ class KO_OT_move_folder(Operator):
         preference.folders.move(neighbor, self.index)
         return {'FINISHED'}
 
+class KO_OT_install_pillow(Operator, ops.InstallPillow):
+    bl_idname = 'ko.install_pillow'
+    bl_label = 'Install Pillow'
+    bl_description = 'Install Pillow for thumbnail caching'
+    bl_options = {'INTERNAL'}
+
+
+    def execute(self: bpy.types.Operator, context: bpy.types.Context) -> set:
+        # Install Pillow first.
+        super().execute(context)
+        update.kpack(None, context)
+        return {'FINISHED'}
+
 
 classes = [
     KO_OT_purchase,
@@ -685,16 +716,18 @@ classes = [
     KO_OT_convert_to_mesh,
     KO_OT_remove_wire_inserts,
     KO_OT_clean_duplicate_materials,
-    KO_OT_move_folder]
+    KO_OT_move_folder,
+    KO_OT_install_pillow
+]
 
 
 def register():
     for cls in classes:
         register_class(cls)
-
+    smart.register()
     try:
-        from .. utility import smart
-        smart.register()
+        from .. utility import matrixmath
+        matrixmath.register()
     except: pass
 
 
@@ -702,7 +735,8 @@ def unregister():
     for cls in classes:
         unregister_class(cls)
 
+    smart.unregister()
     try:
-        from .. utility import smart
-        smart.unregister()
+        from .. utility import matrixmath
+        matrixmath.unregister()
     except: pass

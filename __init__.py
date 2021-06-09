@@ -3,7 +3,7 @@
 bl_info = {
     'name': 'KIT OPS',
     'author': 'Chipp Walters, MX2, proxe, bonjorno7, Mark Kingsnorth',
-    'version': (2, 18, 10),
+    'version': (2, 20, 7),
     'blender': (2, 83, 0),
     'location': 'View3D > Toolshelf (T)',
     'description': 'Streamlined kit bash library with additional productivity tools',
@@ -14,10 +14,12 @@ import bpy
 
 from . addon import preference, property
 from . addon.interface import operator, panel
-from . addon.utility import handler
+from . addon.utility import handler, previews
 
 
 def register():
+    previews.register()
+
     preference.register()
     property.register()
 
@@ -35,3 +37,5 @@ def unregister():
 
     property.unregister()
     preference.unregister()
+
+    previews.unregister()

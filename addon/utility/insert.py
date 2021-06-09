@@ -4,8 +4,8 @@ import bpy
 
 from . import addon, id, ray, remove, regex, update, modifier
 
+from mathutils import Vector
 
-thumbnails = {}
 operator = None
 
 def authoring():
@@ -48,13 +48,22 @@ def collect(objs=[], mains=False, solids=False, cutters=False, wires=False, all=
         inserts = [obj for obj in bpy.data.objects if obj.kitops.insert]
 
     else:
-        inserts = [obj for obj in objs if obj.kitops.insert]
 
-        for check_object in inserts:
-            for obj in bpy.data.objects:
-                if obj.kitops.id == check_object.kitops.id:
-                    if obj not in inserts:
-                        inserts.append(obj)
+        insert_map = {}
+        for obj in bpy.data.objects:
+            if obj.kitops.id not in insert_map:
+                insert_map[obj.kitops.id] = []
+            insert_map[obj.kitops.id].append(obj)
+
+        inserts = []
+        for kitops_id in insert_map:
+            inserts_entries = insert_map[kitops_id]
+            for insert_obj in inserts_entries:
+                if insert_obj in objs and insert_obj.kitops.insert:
+                    inserts.extend(inserts_entries)
+                    continue
+    
+    inserts = list(set(inserts))
 
     inserts = sorted(inserts, key=lambda o: o.name)
 
@@ -71,6 +80,13 @@ def collect(objs=[], mains=False, solids=False, cutters=False, wires=False, all=
         return [obj for obj in inserts if obj.kitops.type == 'WIRE']
 
     return inserts
+
+def parent_objects(child, parent):
+    # Add parent if we have a boolean target. TODO investigate why matric only needed for original inserts and extra copy needed for SYNTH
+    option = addon.option()
+    if option.parent_inserts:
+        child.parent = parent
+        child.matrix_parent_inverse = parent.matrix_world.inverted()
 
 def add(op, context):
     preference = addon.preference()
@@ -124,7 +140,7 @@ def add(op, context):
                 for mat_to_remove in mats_to_remove:
                     if mat_to_remove.users == 0:
                         bpy.data.materials.remove(mat_to_remove)
-            except AttributeError:
+            except (AttributeError, ReferenceError):
                 pass
 
     op.inserts = []
@@ -215,15 +231,18 @@ def add(op, context):
         if obj.kitops.main:
             bpy.context.view_layer.objects.active = obj
 
+    added_mods = []
     if op.boolean_target:
         for obj in op.cutter_objects:
             # if obj.kitops.boolean_type != 'INSERT':
-            add_boolean(obj)
+            mod = add_boolean(obj)
+            if mod:
+                mod.show_viewport = False
+                mod.show_render = False
+                added_mods.append(mod)
+
 
     op.main = context.active_object
-    # if op.init_active:
-    #     op.main.parent = op.init_active
-
     for obj in op.inserts:
         obj.kitops.main_object = op.main
 
@@ -246,6 +265,10 @@ def add(op, context):
 
     update.insert_scale(None, context)
 
+    for mod in added_mods:
+        mod.show_viewport = True
+        mod.show_render = True
+    
     return new_id
 
 
@@ -269,42 +292,48 @@ def add_boolean(obj):
     modifier.sort(obj.kitops.insert_target, option=addon.preference(), ignore=bevels)
     # modifier.sort(obj.kitops.insert_target, option=addon.preference())
 
+    return mod
+
 def select():
     global operator
 
     if not hasattr(bpy.context, 'selected_objects'):
         return
 
-    if addon.option().auto_select:
-        inserts = collect(bpy.context.selected_objects)
-        main_objects = collect(inserts, mains=True)
+    inserts = collect(bpy.context.selected_objects)
 
-        for obj in inserts:
-            if not operator:
-                if obj.kitops.selection_ignore and obj.select_get():
-                    addon.option().auto_select = False
+    main_objects = collect(inserts, mains=True)
 
-                    for deselect in inserts:
-                        if deselect != obj:
-                           deselect.select_set(False)
+    for obj in inserts:
+        if not operator:
+            if obj.kitops.selection_ignore and obj.select_get():
+                
+                for deselect in inserts:
+                    if deselect != obj:
+                        deselect.select_set(False)
 
-                    break
+                break
 
-                elif not obj.kitops.selection_ignore:
-                    obj.select_set(True)
-            else:
+            elif not obj.kitops.selection_ignore:
                 obj.select_set(True)
+        else:
+            obj.select_set(True)
 
-            if not operator:
-                obj.hide_viewport = False
+        if not operator:
+            obj.hide_viewport = False
 
-            if bpy.context.active_object and bpy.context.active_object.kitops.insert:
-                for main in main_objects:
-                    if main.kitops.id == bpy.context.active_object.kitops.id:
-                        bpy.context.view_layer.objects.active = main
+    active_spotted = None
+    if bpy.context.active_object and bpy.context.active_object.kitops.insert:
+        for main in main_objects:
+            
+            if main.kitops.id == bpy.context.active_object.kitops.id:
+                active_spotted = main
 
-                        if not operator and main:
-                            bpy.context.active_object.hide_viewport = False
+    if active_spotted:
+        bpy.context.view_layer.objects.active = active_spotted
+
+        if not operator and active_spotted:
+            bpy.context.active_object.hide_viewport = False
 
 def show_solid_objects():
     for obj in collect(solids=True, all=True):

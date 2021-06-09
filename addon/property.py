@@ -1,4 +1,3 @@
-import re
 import sys
 import traceback
 
@@ -8,50 +7,49 @@ from bpy.types import PropertyGroup
 from bpy.props import *
 from bpy.utils import register_class, unregister_class
 
-from . utility import addon, insert, update, shader
+from . utility import addon, insert, update, shader, previews, enums, smart
 
-smart_enabled = True
-try: from . utility import smart
+authoring_enabled = True
+try: from . utility import matrixmath
 except:
-    smart_enabled = False
+    authoring_enabled = False
     traceback.print_exc()
-    class smart:
+    class matrixmath:
         class update:
-            def mirror_x(prop, context): sys.exit()
-            def mirror_y(prop, context): sys.exit()
-            def mirror_z(prop, context): sys.exit()
-            def insert_target(prop, context): sys.exit()
-            def main(prop, context): sys.exit()
             def type(prop, context): sys.exit()
             def author(prop, context): sys.exit()
 
+
+def prepare_items(items: list) -> list:
+    '''For each item, replace icon_path with icon_id and cast list to tuple.'''
+
+    for index, item in enumerate(items):
+        if isinstance(item, list):
+            item[3] = previews.get(item[3]).icon_id
+            items[index] = tuple(item)
+
+    return items
+
+
 def thumbnails(prop, context):
-    return insert.thumbnails[prop.folder].images
+    option = addon.option()
+    return option.get_kitops_insert_enum(prop.folder)
 
 
 def kpack_enum(pt, context):
     option = addon.option()
+    return option.get_kitops_category_enum()
 
-    items = []
-
-    if len(option.kpack.categories):
-        for index, category in enumerate(option.kpack.categories):
-            if not option.filter or option.kpack.active_index == index or re.search(option.filter, category.name, re.I):
-                items.append((category.name, category.name, '', category.blends[category.active_index].icon_id, index))
-
-    return items
 
 class file(PropertyGroup):
     location: StringProperty()
-    icon: StringProperty()
-    icon_id: IntProperty()
+    icon_path : StringProperty()
 
 
 class folder(PropertyGroup):
     thumbnail: EnumProperty(update=update.thumbnails, items=thumbnails)
-    active_index: IntProperty(update=update.active_index)
+    active_index: IntProperty()
     blends: CollectionProperty(type=file)
-    icon: StringProperty()
     folder: StringProperty()
 
 
@@ -126,7 +124,7 @@ class object(PropertyGroup):
             ('SOLID', 'Solid', 'This obj does NOT cut and is renderable'),
             ('WIRE', 'Wire', 'This obj does NOT cut and is NOT renderable'),
             ('CUTTER', 'Cutter', 'This obj does cut and is NOT renderable')],
-        update = smart.update.type,
+        update = matrixmath.update.type,
         default = 'SOLID')
 
     boolean_type: EnumProperty(
@@ -171,19 +169,13 @@ class scene(PropertyGroup):
 class options(PropertyGroup):
     addon: StringProperty(default=addon.name)
     kpack: PointerProperty(type=kpack)
-    pro: BoolProperty(default=smart_enabled)
+    pro: BoolProperty(default=authoring_enabled)
 
     kpacks: EnumProperty(
         name = 'KPACKS',
         description = 'Available KPACKS',
         items = kpack_enum,
         update = update.kpacks)
-
-    filter: StringProperty(
-        name = 'Filter',
-        description = 'Filter the kpacks list',
-        options = {'TEXTEDIT_UPDATE'},
-        default = '')
 
     insert_name: StringProperty(
         name = 'INSERT Name',
@@ -193,18 +185,18 @@ class options(PropertyGroup):
     author: StringProperty(
         name = 'Author Name',
         description = 'Kit author',
-        update = smart.update.author,
+        update = matrixmath.update.author,
         default = 'Your Name')
 
     auto_scale: BoolProperty(
-        name = 'Auto scale',
+        name = 'Auto scale INSERT',
         description = 'Scale INSERTS based on obj size',
         default = True)
 
-    auto_select: BoolProperty(
-        name = 'Auto select INSERT',
-        description = 'Select all objs related to the INSERT when selecting normally in blender',
-        default = True)
+    parent_inserts: BoolProperty(
+        name = 'Parent INSERTs to the target object',
+        description = 'Automatically Parent the INSERTS to the target object',
+        default = False)
 
     show_modifiers: BoolProperty(
         name = 'Modifiers',
@@ -229,6 +221,17 @@ class options(PropertyGroup):
         description = 'Show the KIT OPS wire objs',
         update = update.show_wire_objects,
         default = True)
+
+    def get_kitops_category_enum(self):
+        '''Get Enum list for KIT OPS Categories'''
+        return prepare_items(enums.kitops_category_enums)
+
+    def get_kitops_insert_enum(self, category):
+        '''Get Enum List for KIT OPS Inserts related to a category'''
+        if category in enums.kitops_insert_enum_map:
+            return prepare_items(enums.kitops_insert_enum_map[category])
+        return []
+
 
 classes = [
     file,
@@ -260,8 +263,8 @@ def register():
     bpy.types.Mesh.kitops = PointerProperty(name='KIT OPS', type=data)
     bpy.types.Material.kitops = PointerProperty(name='KIT OPS', type=mat)
 
-    update.kpack(None, bpy.context)
     update.icons()
+    update.kpack(None, bpy.context)
 
 
 def unregister():
@@ -282,7 +285,4 @@ def unregister():
     del bpy.types.Mesh.kitops
     del bpy.types.Material.kitops
 
-    # shader.unregister()
-
-    addon.icons['main'].close()
-    del addon.icons['main']
+    addon.icons.clear()

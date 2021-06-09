@@ -1,5 +1,8 @@
+# Helper package for object removal.
+
 import bpy
 
+# TODO KNOWN ISSUE: It seems that the call to bpy.data.<ref>.remove() gets longer after each SYNTH run.  This is a known issue but appears inherent to Blender.
 
 def object(obj, data=False):
     if data:
